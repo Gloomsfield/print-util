@@ -72,7 +72,7 @@ PU_STATUS_T pu_get_usb_devices(pu_context * context) {
 			.product_id = strtol(dev_product_id_buffer, NULL, 16),
 		};
 
-		memcpy(context->device_buffer[i].name, dev_model_buffer, strlen(dev_model_buffer + 1));
+		memcpy(context->device_buffer[i].name, dev_model_buffer, strlen(dev_model_buffer));
 
 		i++;
 
@@ -206,8 +206,6 @@ PU_STATUS_T pu_run(pu_context * context) {
 			}
 		}
 	}
-
-	printf("in: %d, ea: %d\n", interface_number, endpoint_address);
 
 	libusb_detach_kernel_driver(context->libusb_printer_handle, interface_number);
 
