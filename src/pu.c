@@ -134,6 +134,8 @@ PU_STATUS_T pu_run(pu_context * context) {
 	if(context->device_count == 0) {
 		printf("print-util error! no USB devices found!\n");
 
+		pu_cleanup(context);
+
 		return PU_FAILURE;
 	}
 
@@ -144,15 +146,25 @@ PU_STATUS_T pu_run(pu_context * context) {
 	}
 
 	uint32_t device_choice = 0;
+	int scanf_status = 0;
 
-	while(device_choice < 1 || context->device_count < device_choice) {
+	while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || context->device_count < device_choice) {
 		printf("[1, %u]: ", context->device_count);
+	}
 
-		scanf("%d", &device_choice);
+	if(scanf_status != 1) {
+		printf("quitting!");
+
+		pu_cleanup(context);
+
+		return PU_SUCCESS;
 	}
 
 	if(pu_choose_device(context, device_choice - 1) != PU_SUCCESS) {
 		printf("print-util error! failed to choose device!\n");
+
+		pu_cleanup(context);
+
 		return PU_FAILURE;
 	}
 
