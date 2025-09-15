@@ -17,29 +17,30 @@
 					clang-tools
 					gcc15
 					glibc
+					libusb1
 					llvmPackages_latest.clang
 					llvmPackages_latest.libllvm
 				];
-			};
 
-			shellHook = let
-				build_command_setup = ''cd $DIR && mkdir -p $DIR/build/ && cd $DIR/build/'';
-				build_command_reset = ''cd $DIR'';
+				shellHook = let
+					build_command_setup = ''cd $DIR && mkdir -p $DIR/build/ && cd $DIR/build/'';
+					build_command_reset = ''cd $DIR'';
 
+					source_files = ''$DIR/src/main.c $DIR/src/pu.c'';
 
-				source_files = ''$DIR/src/main.c'';
+					out_filename = ''print-util'';
 
-				out_filename = ''print-util'';
-
-
-				build_command = ''
-					${build_command_setup} && gcc ${source_files} -o${out_filename};
-					${build_command_reset}
+					build_command = ''
+						${build_command_setup} && gcc ${source_files} -L${pkgs.libusb1}/lib -lusb-1.0 -lsystemd -o${out_filename};
+						${build_command_reset}
+					'';
+				in ''
+					echo "print-util development shell";
+					echo ${pkgs.udev}
+					export DIR=$(pwd);
+					echo -e "-lsystemd" > $DIR/compile_flags.txt;
+					alias build="${build_command}";
 				'';
-			in ''
-				echo "print-util development shell";
-				export DIR=$(pwd);
-				alias build="${build_command}";
-			'';
-		};
+			};
+	};
 }
