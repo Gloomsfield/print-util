@@ -14,7 +14,7 @@
 typedef enum { PU_STATUSES(PU_CHOOSE_ENUM) } PU_STATUS_T;
 static const char * PU_STATUS_STRINGS[] = { PU_STATUSES(PU_CHOOSE_STRING) };
 
-typedef enum { PU_TRUE, PU_FALSE } PU_BOOL;
+typedef enum { PU_TRUE, PU_FALSE } PU_BOOL_T;
 
 typedef struct {
 	char name[256];
@@ -23,13 +23,15 @@ typedef struct {
 } pu_usb_device;
 
 typedef struct {
-	PU_BOOL initialized;
+	PU_BOOL_T initialized;
 	libusb_context * libusb_ctx;
 	libusb_device ** libusb_devices;
 	uint32_t libusb_device_count;
+	libusb_device_handle * libusb_printer_handle;
 	pu_usb_device device_buffer[PU_DEVICE_BUFFER_SIZE];
 	uint32_t device_count;
 } pu_context;
 
 PU_STATUS_T pu_init(pu_context * context);
 PU_STATUS_T pu_run(pu_context * context);
+
