@@ -12,7 +12,7 @@ PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	int libusb_init_result = libusb_init(libusb_ctx);
 
 	if(libusb_init_result) {
-		printf("libusb error! 1 %s\n", libusb_error_name(libusb_init_result));
+		printf("libusb error! %s\n", libusb_error_name(libusb_init_result));
 		return PU_FAILURE;
 	}
 
@@ -23,7 +23,7 @@ PU_STATUS_T pu_get_usb_devices(pu_context * context) {
 	int result = libusb_get_device_list(context->libusb_ctx, &context->libusb_devices);
 
 	if(result < 0) {
-		printf("libusb error! %s\n", libusb_error_name(result));
+		printf("libusb error! failed to get device list: %s\n", libusb_error_name(result));
 		return PU_FAILURE;
 	}
 
@@ -34,7 +34,7 @@ PU_STATUS_T pu_get_usb_devices(pu_context * context) {
 	result = sd_device_enumerator_new(&sd_enum);
 
 	if(result < 0) {
-		printf("sd-device error! %s\n", strerror(-result));
+		printf("sd-device error! failed to generate enumerator: %s\n", strerror(-result));
 		return PU_FAILURE;
 	}
 
@@ -42,7 +42,7 @@ PU_STATUS_T pu_get_usb_devices(pu_context * context) {
 	result = sd_device_enumerator_add_match_property(sd_enum, "DEVTYPE", "usb_device");
 	
 	if(result < 0) {
-		printf("sd-device error! %s\n", strerror(-result));
+		printf("sd-device error! failed to add matches: %s\n", strerror(-result));
 		return PU_FAILURE;
 	}
 	
@@ -56,7 +56,7 @@ PU_STATUS_T pu_get_usb_devices(pu_context * context) {
 	
 	while(device != NULL) {
 		if(i >= PU_DEVICE_BUFFER_SIZE) {
-			printf("print-util error! device buffer too small!");
+			printf("print-util error! device buffer too small!\n");
 
 			return PU_FAILURE;
 		}
