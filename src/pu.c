@@ -6,12 +6,7 @@
 #include <systemd/sd-device.h>
 
 #include "pu.h"
-
-typedef struct {
-	char name[256];
-	uint16_t vendor_id;
-	uint16_t product_id;
-} pu_usb_device;
+#include "pu-constants.h"
 
 PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	int libusb_init_result = libusb_init(libusb_ctx);
@@ -24,16 +19,8 @@ PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_get_usb_devices(
-	libusb_context * libusb_ctx,
-	uint32_t * out_libusb_device_count,
-	libusb_device *** out_libusb_devices,
-	sd_device_enumerator ** out_sd_enum,
-	uint32_t * out_device_count,
-	uint32_t device_buffer_size,
-	pu_usb_device * out_device_buffer
-) {
-	int result = libusb_get_device_list(libusb_ctx, out_libusb_devices);
+PU_STATUS_T pu_get_usb_devices(pu_context * context) {
+	int result = libusb_get_device_list(context->libusb_ctx, &context->libusb_devices);
 
 	if(result < 0) {
 		printf("libusb error! %s\n", libusb_error_name(result));
@@ -42,22 +29,24 @@ PU_STATUS_T pu_get_usb_devices(
 
 	uint32_t libusb_device_count = result;
 
-	result = sd_device_enumerator_new(out_sd_enum);
+	sd_device_enumerator * sd_enum;
+
+	result = sd_device_enumerator_new(&sd_enum);
 
 	if(result < 0) {
 		printf("sd-device error! %s\n", strerror(-result));
 		return PU_FAILURE;
 	}
 
-	result = sd_device_enumerator_add_match_subsystem(*out_sd_enum, "usb", 1);
-	result = sd_device_enumerator_add_match_property(*out_sd_enum, "DEVTYPE", "usb_device");
+	result = sd_device_enumerator_add_match_subsystem(sd_enum, "usb", 1);
+	result = sd_device_enumerator_add_match_property(sd_enum, "DEVTYPE", "usb_device");
 	
 	if(result < 0) {
 		printf("sd-device error! %s\n", strerror(-result));
 		return PU_FAILURE;
 	}
 	
-	sd_device * device = sd_device_enumerator_get_device_first(*out_sd_enum);
+	sd_device * device = sd_device_enumerator_get_device_first(sd_enum);
 
 	const char * dev_model_buffer;
 	const char * dev_vendor_id_buffer;
@@ -66,7 +55,7 @@ PU_STATUS_T pu_get_usb_devices(
 	uint32_t i = 0;
 	
 	while(device != NULL) {
-		if(i >= device_buffer_size) {
+		if(i >= PU_DEVICE_BUFFER_SIZE) {
 			printf("print-util error! device buffer too small!");
 
 			return PU_FAILURE;
@@ -78,22 +67,24 @@ PU_STATUS_T pu_get_usb_devices(
 		sd_device_get_property_value(device, "ID_VENDOR_ID", &dev_vendor_id_buffer);
 		sd_device_get_property_value(device, "ID_MODEL_ID", &dev_product_id_buffer);
 
-		out_device_buffer[i] = (pu_usb_device){
+		context->device_buffer[i] = (pu_usb_device){
 			.name = "UNKNOWN",
 			.vendor_id = strtol(dev_vendor_id_buffer, NULL, 16),
 			.product_id = strtol(dev_product_id_buffer, NULL, 16),
 		};
 
-		memcpy(out_device_buffer[i].name, dev_model_buffer, strlen(dev_model_buffer + 1));
+		memcpy(context->device_buffer[i].name, dev_model_buffer, strlen(dev_model_buffer + 1));
 
-		printf("vendor: %i, product: %i\n", out_device_buffer[i].vendor_id, out_device_buffer[i].product_id);
+		printf("vendor: %i, product: %i\n", context->device_buffer[i].vendor_id, context->device_buffer[i].product_id);
 
 		i++;
 
-		device = sd_device_enumerator_get_device_next(*out_sd_enum);
+		device = sd_device_enumerator_get_device_next(sd_enum);
 	}
 
-	*out_libusb_device_count = libusb_device_count;
+	context->libusb_device_count = libusb_device_count;
+
+	sd_device_enumerator_unref(sd_enum);
 
 	return PU_SUCCESS;
 }
@@ -107,6 +98,11 @@ PU_STATUS_T pu_init(pu_context * context) {
 	return PU_SUCCESS;
 }
 
+void pu_cleanup(pu_context * context) {
+	libusb_free_device_list(context->libusb_devices, 1);
+	libusb_exit(context->libusb_ctx);
+}
+
 PU_STATUS_T pu_run(pu_context * context) {
 	if(context->initialized == PU_FALSE) {
 		printf("print-util error! please initialize the context before running it!\n");
@@ -114,36 +110,15 @@ PU_STATUS_T pu_run(pu_context * context) {
 		return PU_FAILURE;
 	}
 
-	libusb_device ** libusb_devices;
-	uint32_t libusb_device_count;
-
-	sd_device_enumerator * sd_enumerator = NULL;
-
-	uint32_t device_count = 0;
-	pu_usb_device * device_buffer = malloc(128 * sizeof(pu_usb_device));
-
-	if(pu_get_usb_devices(
-		context->libusb_ctx,
-		&libusb_device_count,
-		&libusb_devices,
-		&sd_enumerator,
-		&device_count,
-		128,
-		device_buffer
-	) != PU_SUCCESS) {
+	if(pu_get_usb_devices(context) != PU_SUCCESS) {
 		printf("print-util error! failed to get usb devices!\n");
+
+		pu_cleanup(context);
 
 		return PU_FAILURE;
 	}
 
-	char device_name_buffers[128][256];
-
-	sd_device_enumerator_unref(sd_enumerator);
-
-	libusb_free_device_list(libusb_devices, 1);
-	libusb_exit(context->libusb_ctx);
-
-	free(device_buffer);
+	pu_cleanup(context);
 
 	return PU_SUCCESS;
 }
