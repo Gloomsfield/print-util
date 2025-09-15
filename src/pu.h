@@ -28,6 +28,8 @@ typedef struct {
 	libusb_device ** libusb_devices;
 	uint32_t libusb_device_count;
 	libusb_device_handle * libusb_printer_handle;
+	uint8_t libusb_device_interface_number;
+	uint8_t libusb_device_endpoint_address;
 	pu_usb_device device_buffer[PU_DEVICE_BUFFER_SIZE];
 	uint32_t device_count;
 } pu_context;
