@@ -42,10 +42,6 @@ PU_STATUS_T pu_print_task_path(const char * path) {
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_print_image() {
-	fprintf(printer_f, "%c%c", PU_ESC, 0x2a);
-}
-
 PU_STATUS_T pu_print() {
 	pu_print_task_path("5:30p /friends/events/");
 

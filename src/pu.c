@@ -8,6 +8,8 @@
 #include "pu.h"
 #include "pu-constants.h"
 
+#include "jack-connection.h"
+
 PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	int libusb_init_result = libusb_init(libusb_ctx);
 
@@ -155,6 +157,75 @@ PU_STATUS_T pu_determine_libusb_descriptor_info(pu_context * context) {
 	return PU_FAILURE;
 }
 
+PU_STATUS_T pu_send(pu_context * context, const uint8_t * data, const uint32_t data_length) {
+	int result = 0;
+	int sent_byte_count = 0;
+
+	result = libusb_bulk_transfer(
+		context->libusb_printer_handle,
+		context->libusb_device_endpoint_address,
+		(uint8_t *)data,
+		data_length,
+		&sent_byte_count,
+		0
+	);
+
+	if(result < 0) {
+		printf("libusb error! failed to perform bulk transfer: %s\n", libusb_error_name(result));
+
+		return PU_FAILURE;
+	}
+
+	if(sent_byte_count != data_length) {
+		printf("print-util error! sent byte count mismatch!\n");
+
+		return PU_FAILURE;
+	}
+
+	return PU_SUCCESS;
+}
+
+void pu_signal_end(pu_context * context) {
+	unsigned char end_bytes[] = { 0xa, 0x1d, 'V', 66, 0 };
+	pu_send(context, end_bytes, sizeof(end_bytes));
+}
+
+typedef struct {
+	uint8_t data[512 * 622 / 8];
+	uint16_t height;
+} pu_image_t;
+
+// this is pretty sketchy
+// TODO - clean up
+PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
+	const uint8_t pu_printcommand_enter_bit_image_mode[] = { 
+		PU_ESC,
+		'*',
+		32,
+		512 & 0xff, // low byte
+		512 >> 8 // high byte
+	};
+	
+	for(uint32_t i = 0; i < 622 / 24 - 3; i++) {
+		pu_send(context, pu_printcommand_enter_bit_image_mode, sizeof(pu_printcommand_enter_bit_image_mode));
+
+		for(uint32_t j = 0; j < 512; j++) {
+			const uint8_t data[] = { image->data[2 * j + 512 * (3 * i + 0)], image->data[2 * j + 512 * (3 * i + 1)], image->data[2 * j + 512 * (3 * i + 2)] };
+			pu_send(context, data, sizeof(data));
+		}
+	
+		// feeds the paper by 1 horizontal motion unit or 1
+		// unit of character height, whichever is larger
+		const uint8_t end[] = { PU_ESC, 'J', 1 };
+		pu_send(context, end, sizeof(end));
+	}
+	
+	const uint8_t cut[] = { 0x1d, 'V', 66, 0 };
+	// pu_send(context, cut, sizeof(cut));
+
+	return PU_SUCCESS;
+}
+
 void pu_cleanup(pu_context * context) {
 	libusb_free_device_list(context->libusb_devices, 1);
 	libusb_exit(context->libusb_ctx);
@@ -212,9 +283,6 @@ PU_STATUS_T pu_run(pu_context * context) {
 		return PU_FAILURE;
 	}
 
-	unsigned char data[] = { 0x1d, 0x21, 0x11, 'w', 'h', 'o', 'a', 0x0a, 0x1d, 'V', 66, 0 };
-	int bytes_transferred = 0;
-
 	pu_determine_libusb_descriptor_info(context);
 
 	PU_BOOL_T kernel_was_active = PU_FALSE;
@@ -236,20 +304,55 @@ PU_STATUS_T pu_run(pu_context * context) {
 		context->libusb_device_interface_number
 	);
 
-	int result = 0;
+	// TODO - print loop goes here
 
-	result = libusb_bulk_transfer(
-		context->libusb_printer_handle,
-		context->libusb_device_endpoint_address,
-		data,
-		sizeof(data),
-		&bytes_transferred,
-		0
+	uint8_t buf[2048];
+
+	uint32_t l = snprintf(buf, 2048, "%c%c%c"
+		"Jones Coffee Roasters\n"
+		"\n"
+		"693 S. Raymond Ave, Pasadena, CA 91105\n"
+		"(626) 564-9291\n"
+		"Reg. 2 - Tran. 07526\n"
+		"%c", PU_ESC, 'a', 1, 0x0a
 	);
 
-	if(result < 0) {
-		printf("libusb error! failed to perform bulk transfer: %s\n", libusb_error_name(result));
+	pu_send(context, buf, l);
+
+	pu_image_t image = {
+		.height = 622 / 8,
+	};
+
+	uint8_t image_data[512 * 622 / 8];
+
+	for(uint32_t i = 0; i < 622 * 512; i++) {
+		uint8_t h_byte = jack_connection[i / 8];
+
+		uint8_t v_bit = h_byte >> (7 - (i % 8));
+		v_bit &= 1;
+		v_bit ^= 1;
+		v_bit <<= 7 - (i / 512) % 8;
+
+		image_data[((i / 4096) * 512 + (i % 512)) % 39808] |= v_bit;
 	}
+
+	memcpy(image.data, image_data, 512 * 622 / 8);
+
+	pu_print_image(context, &image);
+
+	l = snprintf(buf, 2048, "%c%c%c"
+		"Chai                                 $5.99"
+		"    SUB Oat Milk                    +$0.75"
+		"Croissant                            $3.99"
+		"------------------------------------------"
+		"SUBTOTAL                            $10.73"
+		"TAX                                  $1.24"
+		"TOTAL                               $11.97", PU_ESC, 'a', 0
+	);
+
+	pu_send(context, buf, l);
+
+	pu_signal_end(context);
 
 	libusb_release_interface(
 		context->libusb_printer_handle,
