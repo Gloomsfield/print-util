@@ -191,7 +191,7 @@ void pu_signal_end(pu_context * context) {
 }
 
 typedef struct {
-	uint8_t data[512 * 622 / 8];
+	uint8_t data[PU_MAX_IMAGE_WIDTH * PU_MAX_IMAGE_HEIGHT / 8];
 	uint16_t height;
 	uint16_t width;
 } pu_image_t;
