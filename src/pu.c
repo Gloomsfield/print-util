@@ -193,6 +193,7 @@ void pu_signal_end(pu_context * context) {
 typedef struct {
 	uint8_t data[512 * 622 / 8];
 	uint16_t height;
+	uint16_t width;
 } pu_image_t;
 
 // this is pretty sketchy
@@ -202,26 +203,9 @@ PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
 		PU_ESC,
 		'*',
 		33,
-		512 & 0xff, // low byte
-		512 >> 8 // high byte
+		image->width & 0xff, // low byte
+		image->width >> 8 // high byte
 	};
-	
-	for(uint32_t i = 0; i < 622 / 24 - 3; i++) {
-		pu_send(context, pu_printcommand_enter_bit_image_mode, sizeof(pu_printcommand_enter_bit_image_mode));
-
-		for(uint32_t j = 0; j < 512; j++) {
-			const uint8_t data[] = { image->data[j + 512 * (3 * i + 0)], image->data[j + 512 * (3 * i + 1)], image->data[j + 512 * (3 * i + 2)] };
-			pu_send(context, data, sizeof(data));
-		}
-	
-		// feeds the paper by 1 horizontal motion unit or 1
-		// unit of character height, whichever is larger
-		const uint8_t end[] = { PU_ESC, 'J', 1 };
-		pu_send(context, end, sizeof(end));
-	}
-	
-	const uint8_t cut[] = { 0x1d, 'V', 66, 0 };
-	// pu_send(context, cut, sizeof(cut));
 
 	return PU_SUCCESS;
 }
@@ -305,54 +289,6 @@ PU_STATUS_T pu_run(pu_context * context) {
 	);
 
 	// TODO - print loop goes here
-
-	uint8_t buf[2048];
-
-	uint32_t l = snprintf(buf, 2048, "%c%c%c"
-		"Jones Coffee Roasters\n"
-		"\n"
-		"693 S. Raymond Ave, Pasadena, CA 91105\n"
-		"(626) 564-9291\n"
-		"Reg. 2 - Tran. 07526\n"
-		"%c", PU_ESC, 'a', 1, 0x0a
-	);
-
-	pu_send(context, buf, l);
-
-	pu_image_t image = {
-		.height = 622 / 8,
-	};
-
-	uint8_t image_data[512 * 622 / 8];
-
-	for(uint32_t i = 0; i < 622 * 512; i++) {
-		uint8_t h_byte = jack_connection[i / 8];
-
-		uint8_t v_bit = h_byte >> (7 - (i % 8));
-		v_bit &= 1;
-		v_bit ^= 1;
-		v_bit <<= 7 - (i / 512) % 8;
-
-		image_data[((i / 4096) * 512 + (i % 512)) % 39808] |= v_bit;
-	}
-
-	memcpy(image.data, image_data, 512 * 622 / 8);
-
-	pu_print_image(context, &image);
-
-	l = snprintf(buf, 2048, "%c%c%c"
-		"Chai                                 $5.99"
-		"    SUB Oat Milk                    +$0.75"
-		"Croissant                            $3.99"
-		"------------------------------------------"
-		"SUBTOTAL                            $10.73"
-		"TAX                                  $1.24"
-		"TOTAL                               $11.97", PU_ESC, 'a', 0
-	);
-
-	pu_send(context, buf, l);
-
-	pu_signal_end(context);
 
 	libusb_release_interface(
 		context->libusb_printer_handle,
