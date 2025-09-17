@@ -201,7 +201,7 @@ PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
 	const uint8_t pu_printcommand_enter_bit_image_mode[] = { 
 		PU_ESC,
 		'*',
-		32,
+		33,
 		512 & 0xff, // low byte
 		512 >> 8 // high byte
 	};
@@ -210,7 +210,7 @@ PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
 		pu_send(context, pu_printcommand_enter_bit_image_mode, sizeof(pu_printcommand_enter_bit_image_mode));
 
 		for(uint32_t j = 0; j < 512; j++) {
-			const uint8_t data[] = { image->data[2 * j + 512 * (3 * i + 0)], image->data[2 * j + 512 * (3 * i + 1)], image->data[2 * j + 512 * (3 * i + 2)] };
+			const uint8_t data[] = { image->data[j + 512 * (3 * i + 0)], image->data[j + 512 * (3 * i + 1)], image->data[j + 512 * (3 * i + 2)] };
 			pu_send(context, data, sizeof(data));
 		}
 	
