@@ -196,16 +196,43 @@ typedef struct {
 	uint16_t width;
 } pu_image_t;
 
-// this is pretty sketchy
-// TODO - clean up
 PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
-	const uint8_t pu_printcommand_enter_bit_image_mode[] = { 
+	const uint8_t pu_printcommand_begin_bit_image_mode[] = { 
 		PU_ESC,
 		'*',
 		33,
 		image->width & 0xff, // low byte
 		image->width >> 8 // high byte
 	};
+	
+	const uint8_t advance_paper[] = { PU_ESC, 'J', 1 };
+
+	for(uint32_t i = 0; i < image->height / 24; i++) {
+		pu_send(context,
+			pu_printcommand_begin_bit_image_mode,
+			sizeof(pu_printcommand_begin_bit_image_mode)
+		);
+
+		for(uint32_t x = 0; x < image->width; x++) {
+			uint8_t byte_buffer[3] = { 0 };
+
+			for(uint32_t j = 0; j < 3; j++) {
+				for(uint32_t y = (i * 24) + (j * 8); y < (i * 24) + ((j + 1) * 8) && y < image->height; y++) {
+					uint8_t bit = image->data[(y * image->width + x) / 8];
+					bit >>= 7 - (x % 8);
+					bit &= 1;
+					bit ^= 1;
+					bit <<= 7 - (y % 8);
+
+					byte_buffer[j] |= bit;
+				}
+			}
+
+			pu_send(context, byte_buffer, 3);
+		}
+
+		pu_send(context, advance_paper, sizeof(advance_paper));
+	}
 
 	return PU_SUCCESS;
 }
@@ -289,6 +316,16 @@ PU_STATUS_T pu_run(pu_context * context) {
 	);
 
 	// TODO - print loop goes here
+	
+	pu_image_t image = {
+		.width = 512,
+		.height = 622,
+	};
+
+	memcpy(image.data, jack_connection, sizeof(jack_connection));
+
+	pu_print_image(context, &image);
+	pu_signal_end(context);
 
 	libusb_release_interface(
 		context->libusb_printer_handle,
