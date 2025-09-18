@@ -8,8 +8,6 @@
 #include "pu.h"
 #include "pu-constants.h"
 
-#include "jack-connection.h"
-
 PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	int libusb_init_result = libusb_init(libusb_ctx);
 
@@ -317,16 +315,6 @@ PU_STATUS_T pu_run(pu_context * context) {
 
 	// TODO - print loop goes here
 	
-	pu_image_t image = {
-		.width = 512,
-		.height = 622,
-	};
-
-	memcpy(image.data, jack_connection, sizeof(jack_connection));
-
-	pu_print_image(context, &image);
-	pu_signal_end(context);
-
 	libusb_release_interface(
 		context->libusb_printer_handle,
 		context->libusb_device_interface_number
