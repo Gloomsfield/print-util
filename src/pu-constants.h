@@ -6,3 +6,7 @@
 #define PU_MAX_IMAGE_HEIGHT (1024)
 
 #define PU_DEVICE_BUFFER_SIZE (256)
+
+// TODO determine filetype
+#define PU_DEFAULT_CONFIG_FILE_PATH "~/.config/print-util/config"
+

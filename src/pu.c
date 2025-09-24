@@ -2,11 +2,54 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <getopt.h>
+
 #include <libusb-1.0/libusb.h>
 #include <systemd/sd-device.h>
 
 #include "pu.h"
 #include "pu-constants.h"
+
+#define PU_PRINT_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_PRINT_OPTION, "print", "p:")
+#define PU_SET_DEFAULT_PRINTER_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_SET_DEFAULT_PRINTER_OPTION, "set-default-printer", "D")
+#define PU_CONFIG_FILE_PATH_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_CONFIG_FILE_PATH_OPTION, "config-path", "c")
+
+#define PU_OPTIONS(CHOOSE_FUNC) \
+	PU_PRINT_OPTION_META(CHOOSE_FUNC) \
+	PU_SET_DEFAULT_PRINTER_OPTION_META(CHOOSE_FUNC) \
+	PU_CONFIG_FILE_PATH_OPTION_META(CHOOSE_FUNC)
+
+#define PU_CHOOSE_OPTION_ENUMS(ENUM, LONG, SHORT) ENUM = SHORT[0],
+#define PU_CHOOSE_OPTION_LONGS(ENUM, LONG, SHORT) LONG,
+#define PU_CHOOSE_OPTION_SHORTS(ENUM, LONG, SHORT) SHORT,
+
+#define PU_CHOOSE_OPTION_LONG(ENUM, LONG, SHORT) LONG
+#define PU_CHOOSE_OPTION_SHORT(ENUM, LONG, SHORT) SHORT
+
+#define L(X) X(PU_CHOOSE_OPTION_LONG)
+
+typedef enum { PU_OPTIONS(PU_CHOOSE_OPTION_ENUMS) } PU_OPTION_T;
+static const char * PU_OPTIONS_LONG_STRINGS[] = { PU_OPTIONS(PU_CHOOSE_OPTION_LONGS) };
+static const char * PU_OPTIONS_SHORT_STRINGS[] = { PU_OPTIONS(PU_CHOOSE_OPTION_SHORTS) };
+static const char PU_OPTIONS_SHORT_STRING[] = { PU_OPTIONS(PU_CHOOSE_OPTION_SHORT) };
+
+static pu_context_t global_context;
+
+const static struct option options[] = {
+	{
+		.name = L(PU_PRINT_OPTION_META),
+		.has_arg = required_argument,
+		.flag = NULL,
+		.val = 'p',
+	},
+	{
+		.name = L(PU_SET_DEFAULT_PRINTER_OPTION_META),
+		.has_arg = required_argument,
+		.flag = (int *)&global_context.set_default_printer,
+		.val = PU_TRUE,
+	},
+	{ 0 },
+};
 
 PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	int libusb_init_result = libusb_init(libusb_ctx);
@@ -19,8 +62,8 @@ PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_get_usb_devices(pu_context * context) {
-	int result = libusb_get_device_list(context->libusb_ctx, &context->libusb_devices);
+PU_STATUS_T pu_get_usb_devices() {
+	int result = libusb_get_device_list(global_context.libusb_ctx, &global_context.libusb_devices);
 
 	if(result < 0) {
 		printf("libusb error! failed to get device list: %s\n", libusb_error_name(result));
@@ -66,56 +109,82 @@ PU_STATUS_T pu_get_usb_devices(pu_context * context) {
 		sd_device_get_property_value(device, "ID_VENDOR_ID", &dev_vendor_id_buffer);
 		sd_device_get_property_value(device, "ID_MODEL_ID", &dev_product_id_buffer);
 
-		context->device_buffer[i] = (pu_usb_device){
+		global_context.device_buffer[i] = (pu_usb_device){
 			.name = "UNKNOWN",
 			.vendor_id = strtol(dev_vendor_id_buffer, NULL, 16),
 			.product_id = strtol(dev_product_id_buffer, NULL, 16),
 		};
 
-		memcpy(context->device_buffer[i].name, dev_model_buffer, strlen(dev_model_buffer));
+		memcpy(global_context.device_buffer[i].name, dev_model_buffer, strlen(dev_model_buffer));
 
 		i++;
 
 		device = sd_device_enumerator_get_device_next(sd_enum);
 	}
 
-	context->device_count = i;
+	global_context.device_count = i;
 
-	context->libusb_device_count = libusb_device_count;
+	global_context.libusb_device_count = libusb_device_count;
 
 	sd_device_enumerator_unref(sd_enum);
 
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_init(pu_context * context) {
-	if(pu_init_libusb(&context->libusb_ctx) != PU_SUCCESS) {
+PU_STATUS_T pu_init(int argc, char * argv[]) {
+	if(pu_init_libusb(&global_context.libusb_ctx) != PU_SUCCESS) {
 		return PU_FAILURE;
 	}
 
-	context->initialized = PU_TRUE;
+	int c = 0;
+	int option_index = 0;
+
+	while((
+		 c = getopt_long(
+			argc,
+			argv,
+			PU_OPTIONS_SHORT_STRING,
+			options,
+			&option_index
+		)
+	) != -1) {
+		switch(c) {
+			case 0:
+				c = PU_OPTIONS_SHORT_STRINGS[option_index][0];
+			case PU_PRINT_OPTION:
+				break;
+			case PU_SET_DEFAULT_PRINTER_OPTION:
+				break;
+			case PU_CONFIG_FILE_PATH_OPTION:
+				break;
+			default:
+				break;
+		}
+	}
+
+	global_context.initialized = PU_TRUE;
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_choose_device(pu_context * context, uint32_t device_index) {
-	context->libusb_printer_handle = libusb_open_device_with_vid_pid(
-		context->libusb_ctx,
-		context->device_buffer[device_index].vendor_id,
-		context->device_buffer[device_index].product_id
+PU_STATUS_T pu_choose_device(uint32_t device_index) {
+	global_context.libusb_printer_handle = libusb_open_device_with_vid_pid(
+		global_context.libusb_ctx,
+		global_context.device_buffer[device_index].vendor_id,
+		global_context.device_buffer[device_index].product_id
 	);
 
-	if(context->libusb_printer_handle == NULL) {
+	if(global_context.libusb_printer_handle == NULL) {
 		return PU_FAILURE;
 	}
 
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_determine_libusb_descriptor_info(pu_context * context) {
+PU_STATUS_T pu_determine_libusb_descriptor_info() {
 	struct libusb_config_descriptor * config_descriptor;
 
 	int result = 0;
-	result = libusb_get_active_config_descriptor(libusb_get_device(context->libusb_printer_handle), &config_descriptor);
+	result = libusb_get_active_config_descriptor(libusb_get_device(global_context.libusb_printer_handle), &config_descriptor);
 
 	if(result < 0) {
 		printf("libusb error! failed to get active config descriptor: %s\n", libusb_error_name(result));
@@ -142,8 +211,8 @@ PU_STATUS_T pu_determine_libusb_descriptor_info(pu_context * context) {
 					continue;
 				}
 
-				context->libusb_device_interface_number = i;
-				context->libusb_device_endpoint_address = endpoint_address;
+				global_context.libusb_device_interface_number = i;
+				global_context.libusb_device_endpoint_address = endpoint_address;
 
 				return PU_SUCCESS;
 			}
@@ -155,13 +224,13 @@ PU_STATUS_T pu_determine_libusb_descriptor_info(pu_context * context) {
 	return PU_FAILURE;
 }
 
-PU_STATUS_T pu_send(pu_context * context, const uint8_t * data, const uint32_t data_length) {
+PU_STATUS_T pu_send(const uint8_t * data, const uint32_t data_length) {
 	int result = 0;
 	int sent_byte_count = 0;
 
 	result = libusb_bulk_transfer(
-		context->libusb_printer_handle,
-		context->libusb_device_endpoint_address,
+		global_context.libusb_printer_handle,
+		global_context.libusb_device_endpoint_address,
 		(uint8_t *)data,
 		data_length,
 		&sent_byte_count,
@@ -183,9 +252,9 @@ PU_STATUS_T pu_send(pu_context * context, const uint8_t * data, const uint32_t d
 	return PU_SUCCESS;
 }
 
-void pu_signal_end(pu_context * context) {
+void pu_signal_end() {
 	unsigned char end_bytes[] = { 0xa, 0x1d, 'V', 66, 0 };
-	pu_send(context, end_bytes, sizeof(end_bytes));
+	pu_send(end_bytes, sizeof(end_bytes));
 }
 
 typedef struct {
@@ -194,7 +263,7 @@ typedef struct {
 	uint16_t width;
 } pu_image_t;
 
-PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
+PU_STATUS_T pu_print_image(pu_image_t * image) {
 	const uint8_t pu_printcommand_begin_bit_image_mode[] = { 
 		PU_ESC,
 		'*',
@@ -206,7 +275,7 @@ PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
 	const uint8_t advance_paper[] = { PU_ESC, 'J', 1 };
 
 	for(uint32_t i = 0; i < image->height / 24; i++) {
-		pu_send(context,
+		pu_send(
 			pu_printcommand_begin_bit_image_mode,
 			sizeof(pu_printcommand_begin_bit_image_mode)
 		);
@@ -226,108 +295,108 @@ PU_STATUS_T pu_print_image(pu_context * context, pu_image_t * image) {
 				}
 			}
 
-			pu_send(context, byte_buffer, 3);
+			pu_send(byte_buffer, 3);
 		}
 
-		pu_send(context, advance_paper, sizeof(advance_paper));
+		pu_send(advance_paper, sizeof(advance_paper));
 	}
 
 	return PU_SUCCESS;
 }
 
-void pu_cleanup(pu_context * context) {
-	libusb_free_device_list(context->libusb_devices, 1);
-	libusb_exit(context->libusb_ctx);
+void pu_cleanup() {
+	libusb_free_device_list(global_context.libusb_devices, 1);
+	libusb_exit(global_context.libusb_ctx);
 }
 
-PU_STATUS_T pu_run(pu_context * context) {
-	if(context->initialized == PU_FALSE) {
+PU_STATUS_T pu_run() {
+	if(global_context.initialized == PU_FALSE) {
 		printf("print-util error! please initialize the context before running it!\n");
 
 		return PU_FAILURE;
 	}
 
-	if(pu_get_usb_devices(context) != PU_SUCCESS) {
+	if(pu_get_usb_devices() != PU_SUCCESS) {
 		printf("print-util error! failed to get USB devices!\n");
 
-		pu_cleanup(context);
+		pu_cleanup();
 
 		return PU_FAILURE;
 	}
 
-	if(context->device_count == 0) {
+	if(global_context.device_count == 0) {
 		printf("print-util error! no USB devices found!\n");
 
-		pu_cleanup(context);
+		pu_cleanup();
 
 		return PU_FAILURE;
 	}
 
 	printf("please select your printer from the following list of USB devices:\n");
 
-	for(uint32_t i = 0; i < context->device_count; i++) {
-		printf("%u - %s\n", i + 1, context->device_buffer[i].name);
+	for(uint32_t i = 0; i < global_context.device_count; i++) {
+		printf("%u - %s\n", i + 1, global_context.device_buffer[i].name);
 	}
 
 	uint32_t device_choice = 0;
 	int scanf_status = 0;
 
-	while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || context->device_count < device_choice) {
-		printf("[1, %u]: ", context->device_count);
+	while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || global_context.device_count < device_choice) {
+		printf("[1, %u]: ", global_context.device_count);
 	}
 
 	if(scanf_status != 1) {
 		printf("quitting!");
 
-		pu_cleanup(context);
+		pu_cleanup();
 
 		return PU_SUCCESS;
 	}
 
-	if(pu_choose_device(context, device_choice - 1) != PU_SUCCESS) {
+	if(pu_choose_device(device_choice - 1) != PU_SUCCESS) {
 		printf("print-util error! failed to choose device!\n");
 
-		pu_cleanup(context);
+		pu_cleanup();
 
 		return PU_FAILURE;
 	}
 
-	pu_determine_libusb_descriptor_info(context);
+	pu_determine_libusb_descriptor_info();
 
 	PU_BOOL_T kernel_was_active = PU_FALSE;
 
 	if(libusb_kernel_driver_active(
-		context->libusb_printer_handle,
-		context->libusb_device_interface_number) == 1
+		global_context.libusb_printer_handle,
+		global_context.libusb_device_interface_number) == 1
 	) {
 		kernel_was_active = PU_TRUE;
 
 		libusb_detach_kernel_driver(
-			context->libusb_printer_handle,
-			context->libusb_device_interface_number
+			global_context.libusb_printer_handle,
+			global_context.libusb_device_interface_number
 		);
 	}
 
 	libusb_claim_interface(
-		context->libusb_printer_handle,
-		context->libusb_device_interface_number
+		global_context.libusb_printer_handle,
+		global_context.libusb_device_interface_number
 	);
 
 	// TODO - print loop goes here
 	
 	libusb_release_interface(
-		context->libusb_printer_handle,
-		context->libusb_device_interface_number
+		global_context.libusb_printer_handle,
+		global_context.libusb_device_interface_number
 	);
 
 	if(kernel_was_active == PU_TRUE) {
 		libusb_attach_kernel_driver(
-			context->libusb_printer_handle,
-			context->libusb_device_interface_number
+			global_context.libusb_printer_handle,
+			global_context.libusb_device_interface_number
 		);
 	}
 
-	pu_cleanup(context);
+	pu_cleanup();
 
 	return PU_SUCCESS;
 }

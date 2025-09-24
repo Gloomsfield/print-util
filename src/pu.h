@@ -8,11 +8,11 @@
 	CHOOSE_FUNC(PU_SUCCESS, "print-util success") \
 	CHOOSE_FUNC(PU_FAILURE, "print-util failure")
 
-#define PU_CHOOSE_ENUM(ENUM, STR) ENUM,
-#define PU_CHOOSE_STRING(ENUM, STR) STR,
+#define PU_CHOOSE_ENUMS(ENUM, STR) ENUM,
+#define PU_CHOOSE_STRINGS(ENUM, STR) STR,
 
-typedef enum { PU_STATUSES(PU_CHOOSE_ENUM) } PU_STATUS_T;
-static const char * PU_STATUS_STRINGS[] = { PU_STATUSES(PU_CHOOSE_STRING) };
+typedef enum { PU_STATUSES(PU_CHOOSE_ENUMS) } PU_STATUS_T;
+static const char * PU_STATUS_STRINGS[] = { PU_STATUSES(PU_CHOOSE_STRINGS) };
 
 typedef enum { PU_TRUE, PU_FALSE } PU_BOOL_T;
 
@@ -24,6 +24,13 @@ typedef struct {
 
 typedef struct {
 	PU_BOOL_T initialized;
+
+	char * config_file_path;
+
+	PU_BOOL_T set_default_printer;
+
+	char * print_string;
+
 	libusb_context * libusb_ctx;
 	libusb_device ** libusb_devices;
 	uint32_t libusb_device_count;
@@ -32,8 +39,8 @@ typedef struct {
 	uint8_t libusb_device_endpoint_address;
 	pu_usb_device device_buffer[PU_DEVICE_BUFFER_SIZE];
 	uint32_t device_count;
-} pu_context;
+} pu_context_t;
 
-PU_STATUS_T pu_init(pu_context * context);
-PU_STATUS_T pu_run(pu_context * context);
+PU_STATUS_T pu_init(int argc, char * argv[]);
+PU_STATUS_T pu_run();
 
