@@ -41,6 +41,12 @@ typedef struct {
 	uint32_t device_count;
 } pu_context_t;
 
+typedef struct {
+	uint8_t data[PU_MAX_IMAGE_WIDTH * PU_MAX_IMAGE_HEIGHT / 8];
+	uint16_t height;
+	uint16_t width;
+} pu_image_t;
+
 PU_STATUS_T pu_init(int argc, char * argv[]);
 PU_STATUS_T pu_run();
 

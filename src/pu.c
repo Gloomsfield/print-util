@@ -257,12 +257,6 @@ void pu_signal_end() {
 	pu_send(end_bytes, sizeof(end_bytes));
 }
 
-typedef struct {
-	uint8_t data[PU_MAX_IMAGE_WIDTH * PU_MAX_IMAGE_HEIGHT / 8];
-	uint16_t height;
-	uint16_t width;
-} pu_image_t;
-
 PU_STATUS_T pu_print_image(pu_image_t * image) {
 	const uint8_t pu_printcommand_begin_bit_image_mode[] = { 
 		PU_ESC,
@@ -382,7 +376,7 @@ PU_STATUS_T pu_run() {
 		global_context.libusb_device_interface_number
 	);
 
-	// TODO - print loop goes here
+	// TODO - print calls go here
 	
 	libusb_release_interface(
 		global_context.libusb_printer_handle,
