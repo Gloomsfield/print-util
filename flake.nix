@@ -36,7 +36,6 @@
 					'';
 				in ''
 					echo "print-util development shell";
-					echo ${pkgs.udev}
 					export DIR=$(pwd);
 					echo -e "-lsystemd" > $DIR/compile_flags.txt;
 					alias build="${build_command}";
