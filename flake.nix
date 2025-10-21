@@ -9,36 +9,31 @@
 		let
 			system = "aarch64-linux";
 			pkgs = import nixpkgs { inherit system; };
+
+			lib = nixpkgs.lib;
+
+			sanitize_newlines = string:
+				let
+					split_string = lib.strings.splitString "\n" string;
+					out = lib.strings.concatStringsSep "\\n" split_string;
+				in out;
 		in {
-			devShells.aarch64-linux.default = pkgs.mkShell {
+			devShells.aarch64-linux.default = pkgs.mkShell.override { stdenv = pkgs.clangStdenv; } {
 				name = "print-util";
 
-				buildInputs = with pkgs; [
+				packages = with pkgs; [
 					clang-tools
-					gcc15
-					glibc
 					libusb1
-					llvmPackages_latest.clang
-					llvmPackages_latest.libllvm
+					gnumake
 				];
 
 				shellHook = let
-					build_command_setup = ''cd $DIR && mkdir -p $DIR/build/ && cd $DIR/build/'';
-					build_command_reset = ''cd $DIR'';
-
-					source_files = ''$DIR/src/main.c $DIR/src/pu.c'';
-
-					out_filename = ''print-util'';
-
-					build_command = ''
-						${build_command_setup} && gcc ${source_files} -L${pkgs.libusb1}/lib -lusb-1.0 -lsystemd -o${out_filename};
-						${build_command_reset}
-					'';
+					makefile_contents = sanitize_newlines (builtins.readFile ./Makefile.template);
 				in ''
 					echo "print-util development shell";
 					export DIR=$(pwd);
-					echo -e "-lsystemd" > $DIR/compile_flags.txt;
-					alias build="${build_command}";
+
+					echo -e '${makefile_contents}' > $DIR/Makefile;
 				'';
 			};
 	};

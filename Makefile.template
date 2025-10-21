@@ -5,7 +5,7 @@ CFLAGS = -Wall -std=c99 -lusb-1.0 -lsystemd -L${pkgs.libusb1}/lib
 SRC_FILES = src/main.c src/pu.c
 OBJ_FILES = build/main.o build/pu.o
 
-TARGET = pu
+TARGET = build/pu
 
 .PHONY: all clean
 
