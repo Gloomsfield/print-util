@@ -28,7 +28,8 @@
 				];
 
 				shellHook = let
-					makefile_contents = sanitize_newlines (builtins.readFile ./Makefile.template);
+					makefile_contents = "# DO NOT EDIT! THIS FILE IS AUTO-GENERATED!\\n\\n" +
+						(sanitize_newlines (builtins.readFile ./Makefile.template));
 				in ''
 					echo "print-util development shell";
 					export DIR=$(pwd);
