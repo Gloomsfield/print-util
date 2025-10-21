@@ -1,0 +1,22 @@
+# DO NOT EDIT! THIS FILE IS AUTO-GENERATED!
+
+CC = clang
+CFLAGS = -Wall -std=c99 -lusb-1.0 -lsystemd -L${pkgs.libusb1}/lib
+SRC_FILES = src/main.c src/pu.c
+OBJ_FILES = build/main.o build/pu.o
+
+TARGET = pu
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(OBJ_FILES)
+	$(CC) $(CFLAGS) $(OBJ_FILES) -o $(TARGET)
+
+build/%.o: src/%.c
+	$(CC) -c $< -o $@
+
+clean:
+	rm -f $(TARGET) $(OBJ_FILES)
+
