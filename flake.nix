@@ -27,14 +27,9 @@
 					gnumake
 				];
 
-				shellHook = let
-					makefile_contents = "# DO NOT EDIT! THIS FILE IS AUTO-GENERATED!\\n\\n" +
-						(sanitize_newlines (builtins.readFile ./Makefile.template));
-				in ''
+				shellHook = ''
 					echo "print-util development shell";
 					export DIR=$(pwd);
-
-					echo -e '${makefile_contents}' > $DIR/Makefile;
 				'';
 			};
 	};

@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -std=c99 -lusb-1.0 -lsystemd -L${pkgs.libusb1}/lib
+CFLAGS = -Wall -std=c99 -lusb-1.0 -lsystemd
 SRC_FILES = src/main.c src/pu.c
 OBJ_FILES = build/main.o build/pu.o
 
@@ -17,4 +17,5 @@ build/%.o: src/%.c
 
 clean:
 	rm -f $(TARGET) $(OBJ_FILES)
+
 
