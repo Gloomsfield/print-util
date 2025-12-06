@@ -25,6 +25,7 @@
 					clang-tools
 					libusb1
 					gnumake
+					gdb
 				];
 
 				shellHook = ''

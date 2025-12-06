@@ -10,46 +10,7 @@
 #include "pu.h"
 #include "pu-constants.h"
 
-#define PU_PRINT_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_PRINT_OPTION, "print", "p:")
-#define PU_SET_DEFAULT_PRINTER_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_SET_DEFAULT_PRINTER_OPTION, "set-default-printer", "D")
-#define PU_CONFIG_FILE_PATH_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_CONFIG_FILE_PATH_OPTION, "config-path", "c")
-
-#define PU_OPTIONS(CHOOSE_FUNC) \
-	PU_PRINT_OPTION_META(CHOOSE_FUNC) \
-	PU_SET_DEFAULT_PRINTER_OPTION_META(CHOOSE_FUNC) \
-	PU_CONFIG_FILE_PATH_OPTION_META(CHOOSE_FUNC)
-
-#define PU_CHOOSE_OPTION_ENUMS(ENUM, LONG, SHORT) ENUM = SHORT[0],
-#define PU_CHOOSE_OPTION_LONGS(ENUM, LONG, SHORT) LONG,
-#define PU_CHOOSE_OPTION_SHORTS(ENUM, LONG, SHORT) SHORT,
-
-#define PU_CHOOSE_OPTION_LONG(ENUM, LONG, SHORT) LONG
-#define PU_CHOOSE_OPTION_SHORT(ENUM, LONG, SHORT) SHORT
-
-#define L(X) X(PU_CHOOSE_OPTION_LONG)
-
-typedef enum { PU_OPTIONS(PU_CHOOSE_OPTION_ENUMS) } PU_OPTION_T;
-static const char * PU_OPTIONS_LONG_STRINGS[] = { PU_OPTIONS(PU_CHOOSE_OPTION_LONGS) };
-static const char * PU_OPTIONS_SHORT_STRINGS[] = { PU_OPTIONS(PU_CHOOSE_OPTION_SHORTS) };
-static const char PU_OPTIONS_SHORT_STRING[] = { PU_OPTIONS(PU_CHOOSE_OPTION_SHORT) };
-
 static pu_context_t global_context;
-
-const static struct option options[] = {
-	{
-		.name = L(PU_PRINT_OPTION_META),
-		.has_arg = required_argument,
-		.flag = NULL,
-		.val = 'p',
-	},
-	{
-		.name = L(PU_SET_DEFAULT_PRINTER_OPTION_META),
-		.has_arg = required_argument,
-		.flag = (int *)&global_context.set_default_printer,
-		.val = PU_TRUE,
-	},
-	{ 0 },
-};
 
 PU_STATUS_T pu_init_libusb(libusb_context ** libusb_ctx) {
 	int libusb_init_result = libusb_init(libusb_ctx);
@@ -109,7 +70,7 @@ PU_STATUS_T pu_get_usb_devices() {
 		sd_device_get_property_value(device, "ID_VENDOR_ID", &dev_vendor_id_buffer);
 		sd_device_get_property_value(device, "ID_MODEL_ID", &dev_product_id_buffer);
 
-		global_context.device_buffer[i] = (pu_usb_device){
+		global_context.device_buffer[i] = (pu_usb_device_t){
 			.name = "UNKNOWN",
 			.vendor_id = strtol(dev_vendor_id_buffer, NULL, 16),
 			.product_id = strtol(dev_product_id_buffer, NULL, 16),
@@ -133,51 +94,17 @@ PU_STATUS_T pu_get_usb_devices() {
 
 PU_STATUS_T pu_init(int argc, char * argv[]) {
 	if(pu_init_libusb(&global_context.libusb_ctx) != PU_SUCCESS) {
+		printf("libusb error! failed to init libusb!");
 		return PU_FAILURE;
 	}
 
-	int c = 0;
-	int option_index = 0;
-
-	while((
-		 c = getopt_long(
-			argc,
-			argv,
-			PU_OPTIONS_SHORT_STRING,
-			options,
-			&option_index
-		)
-	) != -1) {
-		switch(c) {
-			case 0:
-				c = PU_OPTIONS_SHORT_STRINGS[option_index][0];
-			case PU_PRINT_OPTION:
-				break;
-			case PU_SET_DEFAULT_PRINTER_OPTION:
-				break;
-			case PU_CONFIG_FILE_PATH_OPTION:
-				break;
-			default:
-				break;
-		}
-	}
-
-	global_context.initialized = PU_TRUE;
+	global_context.initialized = 1;
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_choose_device(uint32_t device_index) {
-	global_context.libusb_printer_handle = libusb_open_device_with_vid_pid(
-		global_context.libusb_ctx,
-		global_context.device_buffer[device_index].vendor_id,
-		global_context.device_buffer[device_index].product_id
-	);
-
-	if(global_context.libusb_printer_handle == NULL) {
-		return PU_FAILURE;
-	}
-
-	return PU_SUCCESS;
+void pu_cleanup() {
+	libusb_free_device_list(global_context.libusb_devices, 1);
+	libusb_exit(global_context.libusb_ctx);
 }
 
 PU_STATUS_T pu_determine_libusb_descriptor_info() {
@@ -224,6 +151,88 @@ PU_STATUS_T pu_determine_libusb_descriptor_info() {
 	return PU_FAILURE;
 }
 
+PU_STATUS_T pu_select() {
+	if(!global_context.initialized) {
+		printf("print-util error! please initialize the context before running it!\n");
+
+		pu_cleanup();
+
+		return PU_FAILURE;
+	}
+
+	if(pu_get_usb_devices() != PU_SUCCESS) {
+		printf("print-util error! failed to get USB devices!\n");
+
+		pu_cleanup();
+		
+		return PU_FAILURE;
+	}
+
+	if(global_context.device_count == 0) {
+		printf("print-util error! no USB devices found!\n");
+
+		pu_cleanup();
+
+		return PU_FAILURE;
+	}
+
+	printf("please select your printer from the following list of USB devices:\n");
+
+	for(uint32_t i = 0; i < global_context.device_count; i++) {
+		printf("%u - %s\n", i + 1, global_context.device_buffer[i].name);
+	}
+
+	uint32_t device_choice = 0;
+	int scanf_status = 0;
+
+	while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || global_context.device_count < device_choice) {
+		printf("[1, %u]: ", global_context.device_count);
+	}
+
+	if(scanf_status != 1) {
+		printf("quitting!");
+
+		pu_cleanup();
+
+		return PU_FAILURE;
+	}
+
+	global_context.libusb_printer_handle = libusb_open_device_with_vid_pid(
+		global_context.libusb_ctx,
+		global_context.device_buffer[device_choice - 1].vendor_id,
+		global_context.device_buffer[device_choice - 1].product_id
+	);
+
+	if(global_context.libusb_printer_handle == NULL) {
+		printf("libusb printer handle was NULL!\n");
+
+		pu_cleanup();
+
+		return PU_FAILURE;
+	}
+
+	pu_determine_libusb_descriptor_info();
+
+	if(libusb_kernel_driver_active(
+		global_context.libusb_printer_handle,
+		global_context.libusb_device_interface_number
+	)) {
+		global_context.kernel_was_active = 1;
+
+		libusb_detach_kernel_driver(
+			global_context.libusb_printer_handle,
+			global_context.libusb_device_interface_number
+		);
+	}
+
+	libusb_claim_interface(
+		global_context.libusb_printer_handle,
+		global_context.libusb_device_interface_number
+	);
+
+	return PU_SUCCESS;
+}
+
 PU_STATUS_T pu_send(const uint8_t * data, const uint32_t data_length) {
 	int result = 0;
 	int sent_byte_count = 0;
@@ -252,9 +261,49 @@ PU_STATUS_T pu_send(const uint8_t * data, const uint32_t data_length) {
 	return PU_SUCCESS;
 }
 
-void pu_signal_end() {
-	unsigned char end_bytes[] = { 0xa, 0x1d, 'V', 66, 0 };
-	pu_send(end_bytes, sizeof(end_bytes));
+PU_STATUS_T pu_print_text(pu_text_t * text) {
+	const uint8_t text_setup_commands[] = {
+		// setting font
+		PU_ESC,
+		'M',
+		text->font_index,
+
+		// setting justification
+		PU_ESC,
+		'a',
+		text->justification,
+
+		// setting character size
+		0x1d,
+		'!',
+		(text->character_width - 1) << 3 & (text->character_height - 1),
+	};
+
+	const uint8_t end_cut_command[] = {
+		0x0a,
+		0x1d,
+		'V',
+		text->cutmode == PU_CUTMODE_FULL ? 66 : 65,
+		0x00,
+	};
+
+	const uint8_t end_nocut_command[] = {
+		0x0a,
+	};
+
+	uint8_t command[2048] = { '\0' };
+
+	memcpy(&(command[0]), text_setup_commands, sizeof(text_setup_commands));
+	memcpy(&(command[sizeof(text_setup_commands)]), text->string, strlen(text->string));
+	memcpy(
+		&(command[sizeof(text_setup_commands) + strlen(text->string) + 1]),
+		text->cutmode == PU_CUTMODE_NONE ? end_nocut_command : end_cut_command,
+		text->cutmode == PU_CUTMODE_NONE ? sizeof(end_nocut_command) : sizeof(end_cut_command)
+	);
+
+	pu_send(command, sizeof(text_setup_commands) + strlen(text->string) + 1 + (text->cutmode == PU_CUTMODE_NONE ? sizeof(end_nocut_command) : sizeof(end_cut_command)));
+
+	return PU_SUCCESS;
 }
 
 PU_STATUS_T pu_print_image(pu_image_t * image) {
@@ -264,6 +313,17 @@ PU_STATUS_T pu_print_image(pu_image_t * image) {
 		33,
 		image->width & 0xff, // low byte
 		image->width >> 8 // high byte
+	};
+
+	const uint8_t cut_command[] = {
+		0x0a,
+		0x1d,
+		'V',
+		image->cutmode == PU_CUTMODE_FULL ? 66 : 65,
+	};
+
+	const uint8_t end_nocut_command[] = {
+		0x0a,
 	};
 	
 	const uint8_t advance_paper[] = { PU_ESC, 'J', 1 };
@@ -295,95 +355,26 @@ PU_STATUS_T pu_print_image(pu_image_t * image) {
 		pu_send(advance_paper, sizeof(advance_paper));
 	}
 
+	if(image->cutmode != PU_CUTMODE_NONE) {
+		if(pu_send(cut_command, sizeof(cut_command)) != PU_SUCCESS) {
+			return PU_FAILURE;
+		}
+	} else {
+		if(pu_send(end_nocut_command, sizeof(end_nocut_command)) != PU_SUCCESS) {
+			return PU_FAILURE;
+		}
+	}
+
 	return PU_SUCCESS;
 }
 
-void pu_cleanup() {
-	libusb_free_device_list(global_context.libusb_devices, 1);
-	libusb_exit(global_context.libusb_ctx);
-}
-
-PU_STATUS_T pu_run() {
-	if(global_context.initialized == PU_FALSE) {
-		printf("print-util error! please initialize the context before running it!\n");
-
-		return PU_FAILURE;
-	}
-
-	if(pu_get_usb_devices() != PU_SUCCESS) {
-		printf("print-util error! failed to get USB devices!\n");
-
-		pu_cleanup();
-
-		return PU_FAILURE;
-	}
-
-	if(global_context.device_count == 0) {
-		printf("print-util error! no USB devices found!\n");
-
-		pu_cleanup();
-
-		return PU_FAILURE;
-	}
-
-	printf("please select your printer from the following list of USB devices:\n");
-
-	for(uint32_t i = 0; i < global_context.device_count; i++) {
-		printf("%u - %s\n", i + 1, global_context.device_buffer[i].name);
-	}
-
-	uint32_t device_choice = 0;
-	int scanf_status = 0;
-
-	while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || global_context.device_count < device_choice) {
-		printf("[1, %u]: ", global_context.device_count);
-	}
-
-	if(scanf_status != 1) {
-		printf("quitting!");
-
-		pu_cleanup();
-
-		return PU_SUCCESS;
-	}
-
-	if(pu_choose_device(device_choice - 1) != PU_SUCCESS) {
-		printf("print-util error! failed to choose device!\n");
-
-		pu_cleanup();
-
-		return PU_FAILURE;
-	}
-
-	pu_determine_libusb_descriptor_info();
-
-	PU_BOOL_T kernel_was_active = PU_FALSE;
-
-	if(libusb_kernel_driver_active(
-		global_context.libusb_printer_handle,
-		global_context.libusb_device_interface_number) == 1
-	) {
-		kernel_was_active = PU_TRUE;
-
-		libusb_detach_kernel_driver(
-			global_context.libusb_printer_handle,
-			global_context.libusb_device_interface_number
-		);
-	}
-
-	libusb_claim_interface(
-		global_context.libusb_printer_handle,
-		global_context.libusb_device_interface_number
-	);
-
-	// TODO - print calls go here
-	
+PU_STATUS_T pu_stop() {
 	libusb_release_interface(
 		global_context.libusb_printer_handle,
 		global_context.libusb_device_interface_number
 	);
 
-	if(kernel_was_active == PU_TRUE) {
+	if(global_context.kernel_was_active) {
 		libusb_attach_kernel_driver(
 			global_context.libusb_printer_handle,
 			global_context.libusb_device_interface_number
