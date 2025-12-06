@@ -10,21 +10,22 @@
 #include "pu.h"
 #include "pu-constants.h"
 
-#define PU_PRINT_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_PRINT_OPTION, "print", "p:")
-#define PU_SET_DEFAULT_PRINTER_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_SET_DEFAULT_PRINTER_OPTION, "set-default-printer", "D")
-#define PU_CONFIG_FILE_PATH_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_CONFIG_FILE_PATH_OPTION, "config-path", "c")
+#define PU_PROMPT_PRINTER_CHOICE_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_PROMPT_PRINTER_CHOICE_OPTION, "prompt-printer-choice", 'p', "p", PU_FALSE)
+
+#define PU_SET_TEXT_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_SET_TEXT_OPTION, "text", 't', "t", PU_TRUE)
+#define PU_SET_HEADING_OPTION_META(CHOOSE_FUNC) CHOOSE_FUNC(PU_SET_HEADING_OPTION, "heading", 'h', "h", PU_TRUE)
 
 #define PU_OPTIONS(CHOOSE_FUNC) \
-	PU_PRINT_OPTION_META(CHOOSE_FUNC) \
-	PU_SET_DEFAULT_PRINTER_OPTION_META(CHOOSE_FUNC) \
-	PU_CONFIG_FILE_PATH_OPTION_META(CHOOSE_FUNC)
+	PU_PROMPT_PRINTER_CHOICE_OPTION_META(CHOOSE_FUNC) \
+	PU_SET_TEXT_OPTION_META(CHOOSE_FUNC) \
+	PU_SET_HEADING_OPTION_META(CHOOSE_FUNC)
 
-#define PU_CHOOSE_OPTION_ENUMS(ENUM, LONG, SHORT) ENUM = SHORT[0],
-#define PU_CHOOSE_OPTION_LONGS(ENUM, LONG, SHORT) LONG,
-#define PU_CHOOSE_OPTION_SHORTS(ENUM, LONG, SHORT) SHORT,
+#define PU_CHOOSE_OPTION_LONG(ENUM, LONG, SHORT_CHAR, SHORT_STR, REQUIRE_ARGUMENT) LONG
+#define PU_CHOOSE_OPTION_SHORT(ENUM, LONG, SHORT_CHAR, SHORT_STR, REQUIRE_ARGUMENT) SHORT_STR
 
-#define PU_CHOOSE_OPTION_LONG(ENUM, LONG, SHORT) LONG
-#define PU_CHOOSE_OPTION_SHORT(ENUM, LONG, SHORT) SHORT
+#define PU_CHOOSE_OPTION_ENUMS(ENUM, LONG, SHORT_CHAR, SHORT_STR, REQUIRE_ARGUMENT) ENUM = SHORT_CHAR,
+#define PU_CHOOSE_OPTION_LONGS(ENUM, LONG, SHORT_CHAR, SHORT_STR, REQUIRE_ARGUMENT) LONG,
+#define PU_CHOOSE_OPTION_SHORTS(ENUM, LONG, SHORT_CHAR, SHORT_STR, REQUIRE_ARGUMENT) SHORT_STR,
 
 #define L(X) X(PU_CHOOSE_OPTION_LONG)
 
@@ -33,20 +34,24 @@ static const char * PU_OPTIONS_LONG_STRINGS[] = { PU_OPTIONS(PU_CHOOSE_OPTION_LO
 static const char * PU_OPTIONS_SHORT_STRINGS[] = { PU_OPTIONS(PU_CHOOSE_OPTION_SHORTS) };
 static const char PU_OPTIONS_SHORT_STRING[] = { PU_OPTIONS(PU_CHOOSE_OPTION_SHORT) };
 
-static pu_context_t global_context;
-
 const static struct option options[] = {
 	{
-		.name = L(PU_PRINT_OPTION_META),
-		.has_arg = required_argument,
-		.flag = NULL,
-		.val = 'p',
+		.name = L(PU_PROMPT_PRINTER_CHOICE_OPTION_META),
+		.has_arg = no_argument,
+		.flag = (int *)&global_context.prompt_for_printer,
+		.val = PU_TRUE
 	},
 	{
-		.name = L(PU_SET_DEFAULT_PRINTER_OPTION_META),
+		.name = L(PU_SET_HEADING_OPTION_META),
 		.has_arg = required_argument,
-		.flag = (int *)&global_context.set_default_printer,
-		.val = PU_TRUE,
+		.flag = NULL,
+		.val = PU_SET_HEADING_OPTION,
+	},
+		{
+		.name = L(PU_SET_TEXT_OPTION_META),
+		.has_arg = required_argument,
+		.flag = NULL,
+		.val = PU_SET_TEXT_OPTION,
 	},
 	{ 0 },
 };
@@ -139,6 +144,8 @@ PU_STATUS_T pu_init(int argc, char * argv[]) {
 	int c = 0;
 	int option_index = 0;
 
+	printf("short string: %s\n", PU_OPTIONS_SHORT_STRING);
+
 	while((
 		 c = getopt_long(
 			argc,
@@ -151,11 +158,24 @@ PU_STATUS_T pu_init(int argc, char * argv[]) {
 		switch(c) {
 			case 0:
 				c = PU_OPTIONS_SHORT_STRINGS[option_index][0];
-			case PU_PRINT_OPTION:
+			case PU_PROMPT_PRINTER_CHOICE_OPTION:
+				global_context.prompt_for_printer = PU_TRUE;
 				break;
-			case PU_SET_DEFAULT_PRINTER_OPTION:
+			case PU_SET_TEXT_OPTION:
+				strncpy(
+					global_context.print_text,
+					optarg,
+					sizeof(global_context.print_text) / sizeof(global_context.print_text[0])
+				);
+			
 				break;
-			case PU_CONFIG_FILE_PATH_OPTION:
+			case PU_SET_HEADING_OPTION:
+				strncpy(
+					global_context.print_heading,
+					optarg,
+					sizeof(global_context.print_heading) / sizeof(global_context.print_heading[0])
+				);
+
 				break;
 			default:
 				break;
@@ -166,11 +186,25 @@ PU_STATUS_T pu_init(int argc, char * argv[]) {
 	return PU_SUCCESS;
 }
 
-PU_STATUS_T pu_choose_device(uint32_t device_index) {
+PU_STATUS_T pu_choose_device_with_index(uint32_t device_index) {
 	global_context.libusb_printer_handle = libusb_open_device_with_vid_pid(
 		global_context.libusb_ctx,
 		global_context.device_buffer[device_index].vendor_id,
 		global_context.device_buffer[device_index].product_id
+	);
+
+	if(global_context.libusb_printer_handle == NULL) {
+		return PU_FAILURE;
+	}
+
+	return PU_SUCCESS;
+}
+
+PU_STATUS_T pu_choose_device_with_vid_pid(uint16_t vid, uint16_t pid) {
+	global_context.libusb_printer_handle = libusb_open_device_with_vid_pid(
+		global_context.libusb_ctx,
+		vid,
+		pid
 	);
 
 	if(global_context.libusb_printer_handle == NULL) {
@@ -326,33 +360,74 @@ PU_STATUS_T pu_run() {
 		return PU_FAILURE;
 	}
 
-	printf("please select your printer from the following list of USB devices:\n");
+	if(global_context.prompt_for_printer == PU_TRUE) {
+		printf("please select your printer from the following list of USB devices:\n");
 
-	for(uint32_t i = 0; i < global_context.device_count; i++) {
-		printf("%u - %s\n", i + 1, global_context.device_buffer[i].name);
-	}
+		for(uint32_t i = 0; i < global_context.device_count; i++) {
+			printf("%u - %s\n", i + 1, global_context.device_buffer[i].name);
+		}
+	
+		uint32_t device_choice = 0;
+		int scanf_status = 0;
+	
+		while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || global_context.device_count < device_choice) {
+			printf("[1, %u]: ", global_context.device_count);
+		}
+	
+		if(scanf_status != 1) {
+			printf("quitting!");
+	
+			pu_cleanup();
+	
+			return PU_SUCCESS;
+		}
+	
+		if(pu_choose_device_with_index(device_choice - 1) != PU_SUCCESS) {
+			printf("print-util error! failed to choose device!\n");
+	
+			pu_cleanup();
+	
+			return PU_FAILURE;
+		}
+	} else {
+		FILE * config_file = fopen("pu.conf", "r");
 
-	uint32_t device_choice = 0;
-	int scanf_status = 0;
+		if(!config_file) {
+			printf("print-util error! please choose a printer before running without the --"
+				L(PU_PROMPT_PRINTER_CHOICE_OPTION_META) " option!\n"
+			);
 
-	while((scanf_status = scanf("%d", &device_choice)) == 1 && device_choice < 1 || global_context.device_count < device_choice) {
-		printf("[1, %u]: ", global_context.device_count);
-	}
+			pu_cleanup();
 
-	if(scanf_status != 1) {
-		printf("quitting!");
+			return PU_FAILURE;
+		}
 
-		pu_cleanup();
+		int c;
+		int i = 0;
 
-		return PU_SUCCESS;
-	}
+		while(c != EOF) {
+			c = fgetc(config_file);
+			global_context.printer_identifier[i] = (char)c;
+			i++;
+		}
 
-	if(pu_choose_device(device_choice - 1) != PU_SUCCESS) {
-		printf("print-util error! failed to choose device!\n");
+		uint16_t vid;
+		uint16_t pid;
 
-		pu_cleanup();
+		char * vid_end;
 
-		return PU_FAILURE;
+		vid = strtol(global_context.printer_identifier, &vid_end, 16);
+		pid = strtol(vid_end, NULL, 16);
+
+		if(pu_choose_device_with_vid_pid(vid, pid) != PU_SUCCESS) {
+			printf("%s\n", global_context.printer_identifier);
+			printf("%x, %x\n", vid, pid);
+			printf("print-util error! failed to choose device using vid and pid!\n");
+
+			pu_cleanup();
+
+			return PU_FAILURE;
+		}
 	}
 
 	pu_determine_libusb_descriptor_info();

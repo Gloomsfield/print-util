@@ -25,11 +25,12 @@ typedef struct {
 typedef struct {
 	PU_BOOL_T initialized;
 
-	char * config_file_path;
+	PU_BOOL_T prompt_for_printer;
 
-	PU_BOOL_T set_default_printer;
-
-	char * print_string;
+	char printer_identifier[256];
+	
+	char print_text[256];
+	char print_heading[256];
 
 	libusb_context * libusb_ctx;
 	libusb_device ** libusb_devices;
@@ -46,6 +47,12 @@ typedef struct {
 	uint16_t height;
 	uint16_t width;
 } pu_image_t;
+
+static pu_context_t global_context = {
+	.initialized = PU_FALSE,
+	.prompt_for_printer = PU_FALSE,
+	.printer_identifier = { 0 },
+};
 
 PU_STATUS_T pu_init(int argc, char * argv[]);
 PU_STATUS_T pu_run();
