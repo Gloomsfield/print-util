@@ -12,8 +12,10 @@ all: $(TARGET)
 $(TARGET): $(OBJ_FILES)
 	$(CC) $(CFLAGS) $(OBJ_FILES) -o $(TARGET)
 
+-include $(OBJS:%.o=%.d)
+
 build/%.o: src/%.c
-	$(CC) -c $< -o $@
+	$(CC) -MMD -c $< -o $@
 
 clean:
 	rm -f $(TARGET) $(OBJ_FILES)
