@@ -7,30 +7,47 @@
 
 	outputs = { self, nixpkgs }:
 		let
-			system = "aarch64-linux";
-			pkgs = import nixpkgs { inherit system; };
-
 			lib = nixpkgs.lib;
 
-			sanitize_newlines = string:
+			forAllSystems = lib.genAttrs [ "x86_64-linux" "aarch64-linux" ];
+
+			collapseMultiline = { separator, string }:
 				let
-					split_string = lib.strings.splitString "\n" string;
-					out = lib.strings.concatStringsSep "\\n" split_string;
+					splitString = lib.strings.splitString "\n" string;
+					trimString = line: lib.strings.trimWith { start = true; end = true; } line;
+					stringArray = map (line: trimString line) splitString;
+					out = lib.strings.concatStringsSep separator stringArray;
 				in out;
 		in {
-			devShells.aarch64-linux.default = pkgs.mkShell.override { stdenv = pkgs.clangStdenv; } {
-				name = "print-util";
+			devShells = forAllSystems (
+				system: let
+					pkgs = import nixpkgs { inherit system; };
+				in {
+					default = pkgs.mkShell.override { stdenv = pkgs.clangStdenv; } {
+						name = "print-util";
 
-				packages = with pkgs; [
-					clang-tools
-					libusb1
-					gnumake
-				];
+						packages = with pkgs; [
+							clang-tools
+							gnumake
 
-				shellHook = ''
-					echo "print-util development shell";
-					export DIR=$(pwd);
-				'';
-			};
+							libusb1
+
+							gdb
+						];
+
+						shellHook = let
+							clangdFlags = collapseMultiline {
+								separator = "\n";
+								string = ''
+									-isystem${pkgs.clangStdenv.cc.libc.dev}/include/
+									-isystem${pkgs.libusb1.dev}/include/
+								'';
+							};
+						in ''
+							echo -e "${clangdFlags}" > compile_flags.txt
+						'';
+					};
+				}
+			);
 	};
 }
