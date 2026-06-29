@@ -4,9 +4,9 @@
 
 #include "../status.h"
 
-static const uint32_t NULL_HANDLE = ~0;
+#include "../types.h"
 
-typedef uint32_t server_handle_t;
+typedef base_handle_t server_handle_t;
 
 static server_handle_t SERVER_HANDLE;
 
