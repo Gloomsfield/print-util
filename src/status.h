@@ -10,7 +10,7 @@
 #define CHOOSE_STRING(ENUM, STRING, EXIT_CODE) STRING,
 #define CHOOSE_EXIT_CODE(ENUM, STRING, EXIT_CODE) EXIT_CODE,
 
-enum status_t { STATUSES(CHOOSE_ENUM) } status_t;
+typedef enum status_t { STATUSES(CHOOSE_ENUM) } status_t;
 static char* status_strings[] = { STATUSES(CHOOSE_STRING) };
 static int status_exit_codes[] = { STATUSES(CHOOSE_EXIT_CODE) };
 
