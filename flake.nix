@@ -41,7 +41,6 @@
 								string = ''
 									-isystem${pkgs.clangStdenv.cc.libc.dev}/include/
 									-isystem${pkgs.libusb1.dev}/include/
-									-DLIBUSB_BACKEND
 								'';
 							};
 						in ''
